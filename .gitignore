@@ -1,0 +1,22 @@
+# general things to ignore
+.coverage
+.cache
+.venv
+.testrepository
+subunit.log
+.tox
+*,cover
+cover
+*.pyc
+.idea
+*.sw?
+*~
+build
+dist
+AUTHORS
+ChangeLog
+novaclient/versioninfo
+*.egg
+*egg-info
+.eggs
+

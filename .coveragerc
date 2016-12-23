@@ -1,0 +1,6 @@
+[run]
+source = ialgotest
+omit = tests/*
+
+[report]
+ignore_errors = True
