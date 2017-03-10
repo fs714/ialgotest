@@ -92,7 +92,7 @@ setup(
     # pip to create the appropriate form of executable for the target platform.
     entry_points={
         'console_scripts': [
-            'ialgotest=ialgotest:cli',
+            'ialgotest=ialgotest_cli:main',
         ],
     },
 )
