@@ -4,11 +4,16 @@ import datetime  # For datetime objects
 import os.path  # To manage paths
 import sys  # To find out the script name (in argv[0])
 
+# Import the backtrader platform
 import backtrader as bt
 
 
 # Create a Stratey
 class TestStrategy(bt.Strategy):
+    params = (
+        ('maperiod', 15),
+    )
+
     def log(self, txt, dt=None):
         ''' Logging function fot this strategy'''
         dt = dt or self.datas[0].datetime.date(0)
@@ -22,6 +27,10 @@ class TestStrategy(bt.Strategy):
         self.order = None
         self.buyprice = None
         self.buycomm = None
+
+        # Add a MovingAverageSimple indicator
+        self.sma = bt.indicators.SimpleMovingAverage(
+            self.datas[0].close, period=self.params.maperiod)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -70,22 +79,17 @@ class TestStrategy(bt.Strategy):
         if not self.position:
 
             # Not yet ... we MIGHT BUY if ...
-            if self.dataclose[0] < self.dataclose[-1]:
-                # current close less than previous close
+            if self.dataclose[0] > self.sma[0]:
 
-                if self.dataclose[-1] < self.dataclose[-2]:
-                    # previous close less than the previous close
+                # BUY, BUY, BUY!!! (with all possible default parameters)
+                self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
-                    # BUY, BUY, BUY!!! (with default parameters)
-                    self.log('BUY CREATE, %.2f' % self.dataclose[0])
-
-                    # Keep track of the created order to avoid a 2nd order
-                    self.order = self.buy()
+                # Keep track of the created order to avoid a 2nd order
+                self.order = self.buy()
 
         else:
 
-            # Already in the market ... we might sell
-            if len(self) >= (self.bar_executed + 5):
+            if self.dataclose[0] < self.sma[0]:
                 # SELL, SELL, SELL!!! (with all possible default parameters)
                 self.log('SELL CREATE, %.2f' % self.dataclose[0])
 
@@ -103,7 +107,7 @@ if __name__ == '__main__':
     # Datas are in a subfolder of the samples. Need to find where the script is
     # because it could have been called from anywhere
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
-    datapath = os.path.join(modpath, '../../backtrader/datas/orcl-1995-2014.txt')
+    datapath = os.path.join(modpath, '/home/eshufan/project/backtrader/datas/orcl-1995-2014.txt')
 
     # Create a Data Feed
     data = bt.feeds.YahooFinanceCSVData(
@@ -119,10 +123,13 @@ if __name__ == '__main__':
     cerebro.adddata(data)
 
     # Set our desired cash start
-    cerebro.broker.setcash(100000.0)
+    cerebro.broker.setcash(1000.0)
 
-    # Set the commission - 0.1% ... divide by 100 to remove the %
-    cerebro.broker.setcommission(commission=0.001)
+    # Add a FixedSize sizer according to the stake
+    cerebro.addsizer(bt.sizers.FixedSize, stake=10)
+
+    # Set the commission
+    cerebro.broker.setcommission(commission=0.0)
 
     # Print out the starting conditions
     print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
