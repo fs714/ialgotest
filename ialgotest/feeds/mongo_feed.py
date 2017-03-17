@@ -40,6 +40,8 @@ TIMEFRAMES = dict(
 
 
 class MongoFeed(feed.DataBase):
+    lines = (('turn'), ('transNum'),)
+
     params = (
         ('host', '127.0.0.1'),
         ('port', 27017),
@@ -83,5 +85,7 @@ class MongoFeed(feed.DataBase):
         self.l.low[0] = bar['low']
         self.l.close[0] = bar['close']
         self.l.volume[0] = bar['volume']
+        self.l.turn[0] = bar['turn'] or -1
+        self.l.transNum[0] = bar['transNum'] or -1
 
         return True

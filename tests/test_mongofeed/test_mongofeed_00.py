@@ -1,5 +1,7 @@
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 
+import datetime as dt
+
 import backtrader as bt
 
 from ialgotest.feeds.mongo_feed import MongoFeed
@@ -9,7 +11,7 @@ from ialgotest.feeds.mongo_feed import MongoFeed
 class TestStrategy(bt.Strategy):
     def log(self, txt, dt=None):
         ''' Logging function fot this strategy'''
-        dt = dt or self.datas[0].datetime.date(0)
+        dt = dt or self.datas[0].datetime.datetime(0)
         print('%s, %s' % (dt.isoformat(), txt))
 
     def __init__(self):
@@ -17,9 +19,9 @@ class TestStrategy(bt.Strategy):
 
     def next(self):
         # Simply log the data of the series from the reference
-        self.log('Open %.2f, High %.2f, Low %.2f, Close %.2f, Volume %.2f' %
+        self.log('Open %.2f, High %.2f, Low %.2f, Close %.2f, Volume %.2f, Turn %.2f, TransNum %.2f' %
                  (self.datas[0].open[0], self.datas[0].high[0], self.datas[0].low[0], self.datas[0].close[0],
-                  self.datas[0].volume[0]))
+                  self.datas[0].volume[0], self.datas[0].turn[0], self.datas[0].transNum[0]))
 
 
 if __name__ == '__main__':
@@ -30,7 +32,8 @@ if __name__ == '__main__':
     cerebro.addstrategy(TestStrategy)
 
     # Create a Data Feed
-    data = MongoFeed(database='emquant', code='000001.SZ', timeframe=bt.TimeFrame.Days)
+    data = MongoFeed(database='emquant', code='000001.SZ', timeframe=bt.TimeFrame.Days,
+                     fromdate=dt.datetime(2017, 3, 1, 0, 0, 0, 0))
 
     # Add the Data Feed to Cerebro
     cerebro.adddata(data)
