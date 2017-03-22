@@ -3,51 +3,53 @@ from rqalpha import run
 from rqalpha.api import *
 
 
-# 在这个方法中编写任何的初始化逻辑。context对象将会在你的算法策略的任何方法之间做传递。
 def init(context):
     context.s1 = "000001.XSHE"
+    logger.info(context.run_info)
+    logger.info('-- {} --'.format(context.universe))
+    # logger.info(all_instruments(type='CS'))
+    logger.info(instruments('000001.XSHE'))
+    logger.info(instruments(['000001.XSHE', '000002.XSHE']))
+    # Get stock list in one industry
+    logger.info('Industry: {}'.format(industry('C34')))
+    logger.info('Sector: {}'.format(sector('TelecommunicationServices')))
+    logger.info('Concept: {}'.format(concept('民营医院', '国企改革')))
+    logger.info('Devidend:\n{}'.format(get_dividend('000001.XSHE', start_date='20130104')))
+    logger.info('Trade Dates: {}'.format(get_trading_dates(start_date='2016-05-01', end_date='20160505')))
+    logger.info('Previous Trade Date: {}'.format(get_previous_trading_date(date='2016-05-02')))
+    logger.info('Next Trade Date: {}'.format(get_next_trading_date(date='2016-05-02')))
+    logger.info('Yield Curve: {}'.format(get_yield_curve('20130104')))
+    
 
-    # 设置这个策略当中会用到的参数，在策略中可以随时调用，这个策略使用长短均线，我们在这里设定长线和短线的区间，在调试寻找最佳区间的时候只需要在这里进行数值改动
-    context.SHORTPERIOD = 20
-    context.LONGPERIOD = 120
 
 
-# 你选择的证券的数据更新将会触发此段逻辑，例如日或分钟历史数据切片或者是实时数据切片更新
 def handle_bar(context, bar_dict):
-    # 开始编写你的主要的算法逻辑
+    # Get contract pool
+    # logger.info(context.universe)
 
-    # bar_dict[order_book_id] 可以拿到某个证券的bar信息
-    # context.portfolio 可以拿到现在的投资组合状态信息
+    # Use bar_dict[order_book_id] to get the bar info
+    # logger.info(bar_dict[context.s1])
+
+    # Use context.portfolio to get investment portfolio till now
+    # logger.info(context.portfolio)
+    # logger.info(context.portfolio.cash)
+    # logger.info(context.portfolio.positions[context.s1].quantity)
+
+    # Calculate current position in portfolio
+    # cur_position = context.portfolio.positions[context.s1].quantity
+    # Calculte how many stocks we can buy with all available cash
+    # shares = context.portfolio.cash / bar_dict[context.s1].close
+    # logger.info(shares)
+
+    # Use history_bars to get history bars as list
+    # logger.info(history_bars(context.s1, 5, '1d', 'close'))
+
+    # Get current snapshot
+    # logger.info(current_snapshot(context.s1))
 
     # 使用order_shares(id_or_ins, amount)方法进行落单
 
-    # TODO: 开始编写你的算法吧！
-
-    # 因为策略需要用到均线，所以需要读取历史数据
-    prices = history_bars(context.s1, context.LONGPERIOD + 1, '1d', 'close')
-
-    # 使用talib计算长短两根均线，均线以array的格式表达
-    short_avg = talib.SMA(prices, context.SHORTPERIOD)
-    long_avg = talib.SMA(prices, context.LONGPERIOD)
-
-    plot("short avg", short_avg[-1])
-    plot("long avg", long_avg[-1])
-
-    # 计算现在portfolio中股票的仓位
-    cur_position = context.portfolio.positions[context.s1].quantity
-    # 计算现在portfolio中的现金可以购买多少股票
-    shares = context.portfolio.cash / bar_dict[context.s1].close
-
-    # 如果短均线从上往下跌破长均线，也就是在目前的bar短线平均值低于长线平均值，而上一个bar的短线平均值高于长线平均值
-    if short_avg[-1] - long_avg[-1] < 0 and short_avg[-2] - long_avg[-2] > 0 and cur_position > 0:
-        # 进行清仓
-        order_target_value(context.s1, 0)
-
-    # 如果短均线从下往上突破长均线，为入场信号
-    if short_avg[-1] - long_avg[-1] > 0 and short_avg[-2] - long_avg[-2] < 0:
-        # 满仓入股
-        order_shares(context.s1, shares)
-
+    pass
 
 if __name__ == '__main__':
     from ialgotest.conf.generate_config import gen_conf
