@@ -2,7 +2,7 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 
 import backtrader as bt
 
-from ialgotest.feeds.mongo_feed import MongoFeed
+from ialgotest.data_feeds.backtrader_mongo_feed import MongoFeed
 
 
 # Create a Stratey
@@ -26,7 +26,16 @@ class TestStrategy(bt.Strategy):
         self.buycomm = None
 
         # Add a MovingAverageSimple indicator
-        self.sma = bt.indicators.SimpleMovingAverage(self.datas[0].close, period=self.params.maperiod)
+        self.sma = bt.indicators.SimpleMovingAverage(self.datas[0], period=self.params.maperiod)
+
+        # Indicators for the plotting show
+        bt.indicators.ExponentialMovingAverage(self.datas[0], period=25)
+        bt.indicators.WeightedMovingAverage(self.datas[0], period=25, subplot=True)
+        bt.indicators.StochasticSlow(self.datas[0])
+        bt.indicators.MACDHisto(self.datas[0])
+        rsi = bt.indicators.RSI(self.datas[0])
+        bt.indicators.SmoothedMovingAverage(rsi, period=10)
+        bt.indicators.ATR(self.datas[0], plot=False)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -118,4 +127,4 @@ if __name__ == '__main__':
     print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
 
     # Plot the result
-    # cerebro.plot()
+    cerebro.plot()

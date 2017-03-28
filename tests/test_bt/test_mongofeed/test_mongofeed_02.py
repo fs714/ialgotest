@@ -2,13 +2,13 @@ from __future__ import (absolute_import, division, print_function, unicode_liter
 
 import backtrader as bt
 
-from ialgotest.feeds.mongo_feed import MongoFeed
+from ialgotest.data_feeds.backtrader_mongo_feed import MongoFeed
 
 
 # Create a Stratey
 class TestStrategy(bt.Strategy):
     params = (
-        ('exitbars', 5),
+        ('maperiod', 15),
     )
 
     def log(self, txt, dt=None):
@@ -24,6 +24,9 @@ class TestStrategy(bt.Strategy):
         self.order = None
         self.buyprice = None
         self.buycomm = None
+
+        # Add a MovingAverageSimple indicator
+        self.sma = bt.indicators.SimpleMovingAverage(self.datas[0].close, period=self.params.maperiod)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -66,22 +69,16 @@ class TestStrategy(bt.Strategy):
         if not self.position:
 
             # Not yet ... we MIGHT BUY if ...
-            if self.dataclose[0] < self.dataclose[-1]:
-                # current close less than previous close
+            if self.dataclose[0] > self.sma[0]:
+                # BUY, BUY, BUY!!! (with all possible default parameters)
+                self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
-                if self.dataclose[-1] < self.dataclose[-2]:
-                    # previous close less than the previous close
-
-                    # BUY, BUY, BUY!!! (with default parameters)
-                    self.log('BUY CREATE, %.2f' % self.dataclose[0])
-
-                    # Keep track of the created order to avoid a 2nd order
-                    self.order = self.buy()
+                # Keep track of the created order to avoid a 2nd order
+                self.order = self.buy()
 
         else:
 
-            # Already in the market ... we might sell
-            if len(self) >= (self.bar_executed + self.params.exitbars):
+            if self.dataclose[0] < self.sma[0]:
                 # SELL, SELL, SELL!!! (with all possible default parameters)
                 self.log('SELL CREATE, %.2f' % self.dataclose[0])
 
@@ -108,7 +105,7 @@ if __name__ == '__main__':
     # Add a FixedSize sizer according to the stake
     cerebro.addsizer(bt.sizers.FixedSize, stake=100)
 
-    # Set the commission - 0.1% ... divide by 100 to remove the %
+    # Set the commission
     cerebro.broker.setcommission(commission=0.001)
 
     # Print out the starting conditions

@@ -4,7 +4,7 @@ import datetime as dt
 
 import backtrader as bt
 
-from ialgotest.feeds.mongo_feed import MongoFeed
+from ialgotest.data_feeds.backtrader_mongo_feed import MongoFeed
 
 
 # Create a Stratey
