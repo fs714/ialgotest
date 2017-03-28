@@ -32,11 +32,12 @@ def col_remove(col, cyc_type, start, end):
 
 def col_create_index(col, index_list):
     indexes_str = '_1_'.join(index_list) + '_1'
-    indexes = map(lambda x: (x, pymongo.ASCENDING), index_list)
+    indexes = [(x, pymongo.ASCENDING) for x in index_list]
     for key, value in col.index_information().items():
         if indexes_str in key:
             return
-    print('Create index for {}'.format(col))
+    print('Create index for {}'.format(col.full_name))
+    print(indexes)
     col.create_index(indexes)
 
 
@@ -49,5 +50,5 @@ if __name__ == '__main__':
         col = emq_db[code]
         # col_print(col, cyc_type, start, end)
         # col_remove(col, cyc_type, start, end)
-        # col_create_index(col, ['date'])
+        col_create_index(col, ['date'])
 
