@@ -5,7 +5,7 @@ from rqalpha.api import *
 # 在这个方法中编写任何的初始化逻辑。context对象将会在你的算法策略的任何方法之间做传递。
 def init(context):
     logger.info("init")
-    context.s1 = "000001.XSHE"
+    context.s1 = "000001.SZ"
     update_universe(context.s1)
     # 是否已发送了order
     context.fired = False

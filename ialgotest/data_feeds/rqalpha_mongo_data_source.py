@@ -14,6 +14,7 @@ from rqalpha.model.instrument import Instrument
 from rqalpha.utils.datetime_func import convert_date_to_int
 
 from ialgotest.utils.exception import DataFeedError
+from datetime import timedelta
 
 INSTRUMENT_TYPE_MAP = {
     'CS': 0,
@@ -36,6 +37,8 @@ FIELDS = {
     'low': np.dtype('float64'),
     'volume': np.uint64,
     'total_turnover': np.uint64,
+    'limit_up': np.dtype('float64'),
+    'limit_down': np.dtype('float64')
 }
 
 Rule = namedtuple('Rule', ['multiplier', 'round'])
@@ -87,7 +90,7 @@ class MongoDataSource(AbstractDataSource):
     def available_data_range(self, frequency):
         if frequency == '1d':
             calendar = self.get_trading_calendar()
-            return calendar[0].to_pydatetime(), calendar[-1].to_pydatetime()
+            return calendar[0].to_pydatetime().date(), calendar[-1].to_pydatetime().date()
 
         raise NotImplementedError
 
@@ -126,7 +129,7 @@ class MongoDataSource(AbstractDataSource):
         if fields is None:
             return bars
         else:
-            return bars[[fields]]
+            return bars[fields]
 
     # TODO: To be implemented
     def current_snapshot(self, instrument, frequency, dt):
@@ -137,6 +140,9 @@ class MongoDataSource(AbstractDataSource):
 
     def get_risk_free_rate(self, start_date, end_date):
         return self._yield_curve.get_risk_free_rate(start_date, end_date)
+
+    def get_dividend(self, order_book_id, adjusted=True):
+        return None
 
     def get_split(self, order_book_id):
         return None
@@ -183,26 +189,40 @@ class MongoDataSource(AbstractDataSource):
             trading_dates.append(doc['date'])
         return pd.Index(pd.Timestamp(d) for d in trading_dates)
 
+    def get_trading_date(self, code, datetime, delta):
+        trading_dates = self.get_trading_dates_from_mongo(code)
+        index = trading_dates.searchsorted(datetime)
+        return trading_dates[index + delta].to_pydatetime()
+
     @lru_cache(None)
     def get_stock_data_from_mongo(self, code, cyc_type, datetime):
         """
         :param str code: WindCode
         :param cyc_type: Type from CycType
         :param datetime.datetime datetime: Current datetime
-        :return: numpy.ndarray
+        :return: dict
         """
-        mongo_doc = self.db[get_col_name(code)].find_one({'date': datetime, 'cycType': cyc_type})
-        if mongo_doc is None:
+        dt = datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+        dt_doc = self.get_one_day_from_mongo(code, cyc_type, dt)
+        if dt_doc is None:
             return None
-        dtype = np.dtype([(f, FIELDS[f]) for f in FIELDS.keys()])
-        bar = np.zeros(shape=(), dtype=dtype)
+        # dtype = np.dtype([(f, FIELDS[f]) for f in FIELDS.keys()])
+        # bar = np.zeros(shape=(), dtype=dtype)
+        bar = {}
         bar['datetime'] = convert_date_to_int(datetime)
-        bar['open'] = mongo_doc['open']
-        bar['close'] = mongo_doc['close']
-        bar['high'] = mongo_doc['high']
-        bar['low'] = mongo_doc['low']
-        bar['volume'] = mongo_doc['volume']
-        bar['total_turnover'] = mongo_doc['amount']
+        bar['open'] = dt_doc['open']
+        bar['close'] = dt_doc['close']
+        bar['high'] = dt_doc['high']
+        bar['low'] = dt_doc['low']
+        bar['volume'] = dt_doc['volume']
+        bar['total_turnover'] = dt_doc['amount']
+
+        pre_dt_doc = self.get_one_day_from_mongo(code, cyc_type, self.get_trading_date(code, dt, -1))
+        if pre_dt_doc is None:
+            return None
+        bar['limit_up'] = np.floor(pre_dt_doc['close'] * 11000) / 10000
+        bar['limit_down'] = np.ceil(pre_dt_doc['close'] * 9000) / 10000
+
         return bar
 
     @lru_cache(None)
@@ -215,29 +235,49 @@ class MongoDataSource(AbstractDataSource):
         :return: numpy.ndarray
         """
         cursor = self.db[get_col_name(code)].find(
-            {'cycType': cyc_type, 'date': {"$lte": datetime}}).sort("date", pymongo.ASCENDING).limit(bar_count)
+            {'cycType': cyc_type, 'date': {"$lte": datetime}}).sort("date", pymongo.DESCENDING).limit(bar_count + 1)
 
-        if cursor.count() < bar_count:
-            raise DataFeedError('Required bar_count: {} > found docs: {}'.format(bar_count, cursor.count()))
+        if cursor.count() < (bar_count + 1):
+            raise DataFeedError('Required bar_count: {} >= found docs: {}'.format(bar_count, cursor.count()))
 
         dtype = np.dtype([(f, FIELDS[f]) for f in FIELDS.keys()])
         bars = np.zeros(shape=(bar_count,), dtype=dtype)
-        i = 0
+        i = bar_count - 1
         for doc in cursor:
-            bars[i]['datetime'] = convert_date_to_int(datetime)
-            bars[i]['open'] = doc['open']
-            bars[i]['close'] = doc['close']
-            bars[i]['high'] = doc['high']
-            bars[i]['low'] = doc['low']
-            bars[i]['volume'] = doc['volume']
-            bars[i]['total_turnover'] = doc['amount']
-            i += 1
+            if i < -1:
+                break
+
+            if i >= 0:
+                bars[i]['datetime'] = convert_date_to_int(doc['date'])
+                bars[i]['open'] = doc['open']
+                bars[i]['close'] = doc['close']
+                bars[i]['high'] = doc['high']
+                bars[i]['low'] = doc['low']
+                bars[i]['volume'] = doc['volume']
+                bars[i]['total_turnover'] = doc['amount']
+
+            if i < (bar_count - 1):
+                bars[i + 1]['limit_up'] = np.floor(doc['close'] * 11000) / 10000
+                bars[i + 1]['limit_down'] = np.ceil(doc['close'] * 9000) / 10000
+            i -= 1
         return bars
+
+    @lru_cache(None)
+    def get_one_day_from_mongo(self, code, cyc_type, datetime):
+        """
+        :param str code: WindCode
+        :param cyc_type: Type from CycType
+        :param datetime.datetime datetime: Current datetime
+        :return: dict
+        """
+        return self.db[get_col_name(code)].find_one({'date': datetime, 'cycType': cyc_type})
 
     @staticmethod
     def _are_fields_valid(fields, valid_fields):
         if fields is None:
             return True
+        if isinstance(fields, str):
+            return fields in valid_fields
         for field in fields:
             if field not in valid_fields:
                 return False
