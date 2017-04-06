@@ -13,9 +13,6 @@ from rqalpha.interface import AbstractDataSource
 from rqalpha.model.instrument import Instrument
 from rqalpha.utils.datetime_func import convert_date_to_int
 
-from ialgotest.utils.exception import DataFeedError
-from datetime import timedelta
-
 INSTRUMENT_TYPE_MAP = {
     'CS': 0,
     'INDX': 1,
@@ -101,35 +98,49 @@ class MongoDataSource(AbstractDataSource):
         :param str frequency: `1d` or `1m`
         :return: numpy.ndarray
         """
-        if frequency != '1d':
+        if frequency == '1d':
+            bars = self.get_stock_data_from_mongo(instrument.order_book_id, CycType.CYC_DAY)
+            if bars is None:
+                return
+            dt = convert_date_to_int(dt)
+            pos = bars['datetime'].searchsorted(dt)
+            if pos >= len(bars) or bars['datetime'][pos] != dt:
+                return None
+            return bars[pos]
+        elif frequency == '1m':
             raise NotImplementedError
-
-        return self.get_stock_data_from_mongo(instrument.order_book_id, CycType.CYC_DAY, dt)
+        else:
+            raise NotImplementedError
 
     def history_bars(self, instrument, bar_count, frequency, fields, dt, skip_suspended=True):
         """
         :type instrument: rqalpha.model.instrument.instrument
         :type bar_count: int
         :param str frequency: `1d` or `1m`
-        :type fields: str
+        :type fields: str or list[str]
         :type dt: datetime.datetime
         :return: numpy.ndarray
         """
-        if frequency != '1d':
+        if frequency == '1d':
+            bars = self.get_stock_data_from_mongo(instrument.order_book_id, CycType.CYC_DAY)
+
+            if bars is None or not self._are_fields_valid(fields, bars.dtype.names):
+                return None
+
+            if skip_suspended and instrument.type == 'CS':
+                bars = bars[bars['volume'] > 0]
+
+            dt = convert_date_to_int(dt)
+            i = bars['datetime'].searchsorted(dt, side='right')
+            left = i - bar_count if i >= bar_count else 0
+            if fields is None:
+                return bars[left:i]
+            else:
+                return bars[left:i][fields]
+        elif frequency == '1m':
             raise NotImplementedError
-
-        bars = self.get_stock_data_hist_from_mongo(instrument.order_book_id, CycType.CYC_DAY, dt, bar_count)
-
-        if bars is None or not self._are_fields_valid(fields, bars.dtype.names):
-            return None
-
-        if skip_suspended and instrument.type == 'CS':
-            bars = bars[bars['volume'] > 0]
-
-        if fields is None:
-            return bars
         else:
-            return bars[fields]
+            raise NotImplementedError
 
     # TODO: To be implemented
     def current_snapshot(self, instrument, frequency, dt):
@@ -189,88 +200,44 @@ class MongoDataSource(AbstractDataSource):
             trading_dates.append(doc['date'])
         return pd.Index(pd.Timestamp(d) for d in trading_dates)
 
-    def get_trading_date(self, code, datetime, delta):
-        trading_dates = self.get_trading_dates_from_mongo(code)
-        index = trading_dates.searchsorted(datetime)
-        return trading_dates[index + delta].to_pydatetime()
-
     @lru_cache(None)
-    def get_stock_data_from_mongo(self, code, cyc_type, datetime):
+    def get_stock_data_from_mongo(self, code, cyc_type):
         """
         :param str code: WindCode
         :param cyc_type: Type from CycType
-        :param datetime.datetime datetime: Current datetime
-        :return: dict
-        """
-        dt = datetime.replace(hour=0, minute=0, second=0, microsecond=0)
-        dt_doc = self.get_one_day_from_mongo(code, cyc_type, dt)
-        if dt_doc is None:
-            return None
-        # dtype = np.dtype([(f, FIELDS[f]) for f in FIELDS.keys()])
-        # bar = np.zeros(shape=(), dtype=dtype)
-        bar = {}
-        bar['datetime'] = convert_date_to_int(datetime)
-        bar['open'] = dt_doc['open']
-        bar['close'] = dt_doc['close']
-        bar['high'] = dt_doc['high']
-        bar['low'] = dt_doc['low']
-        bar['volume'] = dt_doc['volume']
-        bar['total_turnover'] = dt_doc['amount']
-
-        pre_dt_doc = self.get_one_day_from_mongo(code, cyc_type, self.get_trading_date(code, dt, -1))
-        if pre_dt_doc is None:
-            return None
-        bar['limit_up'] = np.floor(pre_dt_doc['close'] * 11000) / 10000
-        bar['limit_down'] = np.ceil(pre_dt_doc['close'] * 9000) / 10000
-
-        return bar
-
-    @lru_cache(None)
-    def get_stock_data_hist_from_mongo(self, code, cyc_type, datetime, bar_count):
-        """
-        :param str code: WindCode
-        :param cyc_type: Type from CycType
-        :param datetime.datetime datetime: Current datetime
-        :param int bar_count: Required history bar count
         :return: numpy.ndarray
         """
         cursor = self.db[get_col_name(code)].find(
-            {'cycType': cyc_type, 'date': {"$lte": datetime}}).sort("date", pymongo.DESCENDING).limit(bar_count + 1)
+            {'cycType': cyc_type},
+            {'_id': False,
+             'date': True,
+             'open': True,
+             'close': True,
+             'high': True,
+             'low': True,
+             'volume': True,
+             'amount': True
+             }).sort("date", pymongo.ASCENDING)
 
-        if cursor.count() < (bar_count + 1):
-            raise DataFeedError('Required bar_count: {} >= found docs: {}'.format(bar_count, cursor.count()))
-
+        pre_close = cursor.next()['close']
+        data_num = cursor.count()
         dtype = np.dtype([(f, FIELDS[f]) for f in FIELDS.keys()])
-        bars = np.zeros(shape=(bar_count,), dtype=dtype)
-        i = bar_count - 1
+        bars = np.zeros(shape=(data_num,), dtype=dtype)
+
+        i = 0
         for doc in cursor:
-            if i < -1:
-                break
-
-            if i >= 0:
-                bars[i]['datetime'] = convert_date_to_int(doc['date'])
-                bars[i]['open'] = doc['open']
-                bars[i]['close'] = doc['close']
-                bars[i]['high'] = doc['high']
-                bars[i]['low'] = doc['low']
-                bars[i]['volume'] = doc['volume']
-                bars[i]['total_turnover'] = doc['amount']
-
-            if i < (bar_count - 1):
-                bars[i + 1]['limit_up'] = np.floor(doc['close'] * 11000) / 10000
-                bars[i + 1]['limit_down'] = np.ceil(doc['close'] * 9000) / 10000
-            i -= 1
+            bars[i]['datetime'] = convert_date_to_int(doc['date'])
+            bars[i]['open'] = doc['open']
+            bars[i]['close'] = doc['close']
+            bars[i]['high'] = doc['high']
+            bars[i]['low'] = doc['low']
+            bars[i]['volume'] = doc['volume']
+            bars[i]['total_turnover'] = doc['amount']
+            bars[i]['limit_up'] = np.floor(pre_close * 11000) / 10000
+            bars[i]['limit_down'] = np.ceil(pre_close * 9000) / 10000
+            pre_close = doc['close']
+            i += 1
         return bars
-
-    @lru_cache(None)
-    def get_one_day_from_mongo(self, code, cyc_type, datetime):
-        """
-        :param str code: WindCode
-        :param cyc_type: Type from CycType
-        :param datetime.datetime datetime: Current datetime
-        :return: dict
-        """
-        return self.db[get_col_name(code)].find_one({'date': datetime, 'cycType': cyc_type})
 
     @staticmethod
     def _are_fields_valid(fields, valid_fields):

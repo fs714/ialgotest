@@ -1,10 +1,9 @@
-import talib
 from rqalpha import run
 from rqalpha.api import *
 
 
 def init(context):
-    context.s1 = "000001.XSHE"
+    context.s1 = "000001.SZ"
     logger.info(context.run_info)
     logger.info('-- {} --'.format(context.universe))
     # logger.info(all_instruments(type='CS'))
@@ -14,13 +13,11 @@ def init(context):
     logger.info('Industry: {}'.format(industry('C34')))
     logger.info('Sector: {}'.format(sector('TelecommunicationServices')))
     logger.info('Concept: {}'.format(concept('民营医院', '国企改革')))
-    logger.info('Devidend:\n{}'.format(get_dividend('000001.XSHE', start_date='20130104')))
+    # logger.info('Devidend:\n{}'.format(get_dividend('000001.XSHE', start_date='20130104')))
     logger.info('Trade Dates: {}'.format(get_trading_dates(start_date='2016-05-01', end_date='20160505')))
     logger.info('Previous Trade Date: {}'.format(get_previous_trading_date(date='2016-05-02')))
     logger.info('Next Trade Date: {}'.format(get_next_trading_date(date='2016-05-02')))
     logger.info('Yield Curve: {}'.format(get_yield_curve('20130104')))
-    
-
 
 
 def handle_bar(context, bar_dict):
@@ -50,6 +47,7 @@ def handle_bar(context, bar_dict):
     # 使用order_shares(id_or_ins, amount)方法进行落单
 
     pass
+
 
 if __name__ == '__main__':
     from ialgotest.conf.generate_config import gen_conf
