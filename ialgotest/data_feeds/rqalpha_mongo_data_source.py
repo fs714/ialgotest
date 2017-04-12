@@ -11,7 +11,7 @@ from pymongo.errors import ConnectionFailure
 from rqalpha.data.yield_curve_store import YieldCurveStore
 from rqalpha.interface import AbstractDataSource
 from rqalpha.model.instrument import Instrument
-from rqalpha.utils.datetime_func import convert_date_to_int
+from rqalpha.utils.datetime_func import convert_date_to_int, convert_dt_to_int
 
 INSTRUMENT_TYPE_MAP = {
     'CS': 0,
@@ -108,7 +108,14 @@ class MongoDataSource(AbstractDataSource):
                 return None
             return bars[pos]
         elif frequency == '1m':
-            raise NotImplementedError
+            bars = self.get_stock_data_from_mongo(instrument.order_book_id, CycType.CYC_MINUTE)
+            if bars is None:
+                return
+            dt = convert_dt_to_int(dt)
+            pos = bars['datetime'].searchsorted(dt)
+            if pos >= len(bars) or bars['datetime'][pos] != dt:
+                return None
+            return bars[pos]
         else:
             raise NotImplementedError
 
@@ -138,7 +145,21 @@ class MongoDataSource(AbstractDataSource):
             else:
                 return bars[left:i][fields]
         elif frequency == '1m':
-            raise NotImplementedError
+            bars = self.get_stock_data_from_mongo(instrument.order_book_id, CycType.CYC_DAY)
+
+            if bars is None or not self._are_fields_valid(fields, bars.dtype.names):
+                return None
+
+            # if skip_suspended and instrument.type == 'CS':
+            #     bars = bars[bars['volume'] > 0]
+
+            dt = convert_dt_to_int(dt)
+            i = bars['datetime'].searchsorted(dt, side='right')
+            left = i - bar_count if i >= bar_count else 0
+            if fields is None:
+                return bars[left:i]
+            else:
+                return bars[left:i][fields]
         else:
             raise NotImplementedError
 
@@ -219,22 +240,27 @@ class MongoDataSource(AbstractDataSource):
              'amount': True
              }).sort("date", pymongo.ASCENDING)
 
-        pre_close = cursor.next()['close']
+        pre_close = np.round(cursor.next()['close'], CONVERTER['close'].round)
         data_num = cursor.count()
         dtype = np.dtype([(f, FIELDS[f]) for f in FIELDS.keys()])
         bars = np.zeros(shape=(data_num,), dtype=dtype)
 
         i = 0
         for doc in cursor:
-            bars[i]['datetime'] = convert_date_to_int(doc['date'])
-            bars[i]['open'] = doc['open']
-            bars[i]['close'] = doc['close']
-            bars[i]['high'] = doc['high']
-            bars[i]['low'] = doc['low']
+            if cyc_type == CycType.CYC_DAY:
+                bars[i]['datetime'] = convert_date_to_int(doc['date'])
+                bars[i]['limit_up'] = np.round(np.floor(pre_close * 11000) / 10000, CONVERTER['limit_up'].round)
+                bars[i]['limit_down'] = np.round(np.ceil(pre_close * 9000) / 10000, CONVERTER['limit_down'].round)
+            elif cyc_type == CycType.CYC_MINUTE:
+                bars[i]['datetime'] = convert_dt_to_int(doc['date'])
+            else:
+                raise NotImplementedError
+            bars[i]['open'] = np.round(doc['open'], CONVERTER['open'].round)
+            bars[i]['close'] = np.round(doc['close'], CONVERTER['close'].round)
+            bars[i]['high'] = np.round(doc['high'], CONVERTER['high'].round)
+            bars[i]['low'] = np.round(doc['low'], CONVERTER['low'].round)
             bars[i]['volume'] = doc['volume']
             bars[i]['total_turnover'] = doc['amount']
-            bars[i]['limit_up'] = np.floor(pre_close * 11000) / 10000
-            bars[i]['limit_down'] = np.ceil(pre_close * 9000) / 10000
             pre_close = doc['close']
             i += 1
         return bars
