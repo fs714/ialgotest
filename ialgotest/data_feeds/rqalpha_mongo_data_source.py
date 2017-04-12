@@ -112,7 +112,7 @@ class MongoDataSource(AbstractDataSource):
         else:
             raise NotImplementedError
 
-    def history_bars(self, instrument, bar_count, frequency, fields, dt, skip_suspended=True):
+    def history_bars(self, instrument, bar_count, frequency, fields, dt, skip_suspended=True, include_now=False):
         """
         :type instrument: rqalpha.model.instrument.instrument
         :type bar_count: int
@@ -159,8 +159,8 @@ class MongoDataSource(AbstractDataSource):
         return None
 
     # TODO: To be implemented
-    def is_suspended(self, order_book_id, dt):
-        return False
+    def is_suspended(self, order_book_id, dt_list):
+        return [(False) for d in dt_list]
 
     # TODO: To be implemented
     def is_st_stock(self, order_book_id, dt):
