@@ -1,4 +1,5 @@
-def gen_conf(strategy_file, plot=False, save_plot=False, save_output=False, report_path=None, mongo_feed=True):
+def gen_conf(strategy_file, freq='1d', start='2015-01-01', end='2016-01-01', plot=False, save_plot=False,
+             save_output=False, report_path=None, mongo_feed=True):
     config = {
         'version': '0.1.5',
         # 白名单，设置可以直接在策略代码中指定哪些模块的配置项目
@@ -9,11 +10,11 @@ def gen_conf(strategy_file, plot=False, save_plot=False, save_output=False, repo
             # 数据源所存储的文件路径
             'data_bundle_path': '/root/.rqalpha/bundle',
             # 回测起始日期
-            'start_date': '2015-01-01',
+            'start_date': start,
             # 回测结束日期(如果是实盘，则忽略该配置)
-            'end_date': '2016-01-01',
+            'end_date': end,
             # 目前支持 `1d` (日线回测) 和 `1m` (分钟线回测)
-            'frequency': '1d',
+            'frequency': freq,
             # 股票起始资金
             'stock_starting_cash': 100000.0,
             # 期货起始资金

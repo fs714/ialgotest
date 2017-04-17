@@ -12,6 +12,7 @@ from rqalpha.data.yield_curve_store import YieldCurveStore
 from rqalpha.interface import AbstractDataSource
 from rqalpha.model.instrument import Instrument
 from rqalpha.utils.datetime_func import convert_date_to_int, convert_dt_to_int
+from rqalpha.utils.logger import user_log as logger
 
 INSTRUMENT_TYPE_MAP = {
     'CS': 0,
@@ -85,10 +86,9 @@ class MongoDataSource(AbstractDataSource):
         return self._trading_dates
 
     def available_data_range(self, frequency):
-        if frequency == '1d':
+        if frequency in ['1m', '1d']:
             calendar = self.get_trading_calendar()
             return calendar[0].to_pydatetime().date(), calendar[-1].to_pydatetime().date()
-
         raise NotImplementedError
 
     def get_bar(self, instrument, dt, frequency):
@@ -145,7 +145,7 @@ class MongoDataSource(AbstractDataSource):
             else:
                 return bars[left:i][fields]
         elif frequency == '1m':
-            bars = self.get_stock_data_from_mongo(instrument.order_book_id, CycType.CYC_DAY)
+            bars = self.get_stock_data_from_mongo(instrument.order_book_id, CycType.CYC_MINUTE)
 
             if bars is None or not self._are_fields_valid(fields, bars.dtype.names):
                 return None
@@ -228,6 +228,7 @@ class MongoDataSource(AbstractDataSource):
         :param cyc_type: Type from CycType
         :return: numpy.ndarray
         """
+        logger.info('Load data from MongoDB: Code = {}, CycType = {}'.format(code, cyc_type))
         cursor = self.db[get_col_name(code)].find(
             {'cycType': cyc_type},
             {'_id': False,
@@ -263,6 +264,7 @@ class MongoDataSource(AbstractDataSource):
             bars[i]['total_turnover'] = doc['amount']
             pre_close = doc['close']
             i += 1
+        logger.info('Load data from MongoDB finished: Code = {}, CycType = {}'.format(code, cyc_type))
         return bars
 
     @staticmethod
